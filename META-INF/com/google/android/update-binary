@@ -1,0 +1,4 @@
+#!/sbin/sh
+O3K=1;[ -z "$BB" ]&&BB=/sbin/busybox
+[ -f "$BB" ]&&for a in $($BB --list);do alias $a="$BB $a";done
+exec sh "$(dirname "$0")/../../customize.sh" "$@"

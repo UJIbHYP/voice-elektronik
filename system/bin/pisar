@@ -1,0 +1,98 @@
+#!/system/bin/sh
+# ==============================================================
+# Elektronic — Консольная утилита управления и распознавания
+# ==============================================================
+
+MODDIR="/data/adb/modules/giga_pisar_android"
+[ ! -d "$MODDIR" ] && MODDIR="$(cd "$(dirname "$0")/../.." && pwd)"
+
+find_python() {
+    for p in "/data/data/com.termux/files/usr/bin/python3" \
+             "/data/data/com.termux/files/usr/bin/python" \
+             "/system/bin/python3" \
+             "/system/xbin/python3" \
+             "/data/adb/modules/python/bin/python3" \
+             "$(command -v python3 2>/dev/null)"; do
+        if [ -x "$p" ]; then
+            echo "$p"
+            return
+        fi
+    done
+    echo "python3"
+}
+
+PY=$(find_python)
+
+case "$1" in
+    --status|-s)
+        echo "=== Статус Elektronic Android ==="
+        if [ -f /data/local/tmp/giga_daemon.pid ] && kill -0 "$(cat /data/local/tmp/giga_daemon.pid)" 2>/dev/null; then
+            echo "[-] Демон: РАБОТАЕТ (PID $(cat /data/local/tmp/giga_daemon.pid))"
+        else
+            echo "[-] Демон: НЕ ЗАПУЩЕН"
+        fi
+
+        if [ -f /data/local/tmp/giga_server.pid ] && kill -0 "$(cat /data/local/tmp/giga_server.pid)" 2>/dev/null; then
+            echo "[-] Локальный сервер: РАБОТАЕТ (PID $(cat /data/local/tmp/giga_server.pid))"
+        else
+            echo "[-] Локальный сервер: НЕ ЗАПУЩЕН"
+        fi
+
+        MODEL_DIR="${MODDIR}/model"
+        if [ -f "${MODEL_DIR}/v3_e2e_rnnt.yaml" ]; then
+            echo "[-] Модель речи (v3): НАЙДЕНА (${MODEL_DIR})"
+        else
+            echo "[-] Модель речи: НЕ УСТАНОВЛЕНА (запустите sh ${MODDIR}/install_model.sh)"
+        fi
+        exit 0
+        ;;
+
+    --restart|-r)
+        echo "[*] Перезапуск демона Elektronic..."
+        pkill -9 -f "giga_daemon.sh" 2>/dev/null || true
+        pkill -9 -f "key_listener.sh" 2>/dev/null || true
+        pkill -9 -f "pisar.py" 2>/dev/null || true
+        rm -f /data/local/tmp/giga_*.pid
+        sleep 1
+        "${MODDIR}/bin/giga_daemon.sh" >/dev/null 2>&1 &
+        echo "[+] Демон перезапущен."
+        exit 0
+        ;;
+
+    --stop)
+        echo "[*] Остановка Elektronic..."
+        if [ -f /data/local/tmp/giga_daemon.pid ]; then
+            kill "$(cat /data/local/tmp/giga_daemon.pid)" 2>/dev/null || true
+            rm -f /data/local/tmp/giga_daemon.pid
+        fi
+        pkill -f "key_listener.sh" 2>/dev/null || true
+        pkill -f "pisar.py" 2>/dev/null || true
+        echo "[+] Остановлено."
+        exit 0
+        ;;
+
+    --log|-l)
+        if [ -f /data/local/tmp/giga_pisar.log ]; then
+            tail -n 50 /data/local/tmp/giga_pisar.log
+        else
+            echo "Лог-файл пока пуст."
+        fi
+        exit 0
+        ;;
+
+    "")
+        echo "Использование: pisar [опции | аудио_файл.wav]"
+        echo "  pisar запись.wav      - распознать файл"
+        echo "  pisar --status        - статус сервисов и модели"
+        echo "  pisar --restart       - перезапустить демон"
+        echo "  pisar --stop          - остановить демон"
+        echo "  pisar --log           - показать последние логи"
+        echo "  pisar --serve         - запустить HTTP-сервер вручную"
+        exit 1
+        ;;
+
+    *)
+        # Передаём управление скрипту pisar.py
+        PISAR_MODEL_DIR="${MODDIR}/model" exec $PY "${MODDIR}/server/pisar.py" "$@"
+        ;;
+esac
